@@ -359,7 +359,7 @@ def main():
                 else:
                     cv.putText(viewWin, f'--- MM', (320,165),cv.FONT_HERSHEY_COMPLEX_SMALL,2,WHITE)
             # 경적 구간에 들어오면 스크린에 정지 표시하고 경적 소리 출력 -----------------------------
-            if distance < HORN_DISTANCE:
+            if 20 < distance < HORN_DISTANCE:            # 20mm 이하는 센서 노이즈(사거리 등) 무시
                 cv.circle(viewWin, (400,160), 100, RED, 25)  # 정지 표시
                 cv.line(viewWin, (400+70,160-70), (400-70,160+70), RED, 25)
                 GPIO.output(LAMP_BRAKE,GPIO.HIGH)        # 브레이크 적색 램프 점등
