@@ -268,7 +268,8 @@ def main():
     signRedDelay = 0             # 적색 신호가 감지 됬을 때 0 보다 큰 수로 설정, 0 이면 주행 
     angle = 0                    # 조향 각도
     timeCycle = 0                # 실행 주기 시간 (카메라 frame) 
-    horn = 0                     # 경적 유지 시간
+    horn = 0                     # 경적 트리거 (1=울리기 시작, 0=정지)
+    hornTimer = 0                # 경적 3회 패턴 프레임 카운터
     blinkCount = 0               # 깜빡이 카운트
 
     #----------------------------------------------------------------------------------------
@@ -285,12 +286,20 @@ def main():
         elif lightCar == 'FIRE TRUCK': nx.fireTruck()  # Fire Truck
         elif lightCar == 'PATROL': nx.patrol()         # Patrol Car
         elif lightCar == 'OFF' or lightCar == ' ': nx.lamp(0,0,0)        # 전조등 Off
-        # 경적 -------------------------------------------------------------------------------
-        if horn: 
-            GPIO.output(BUZZER,GPIO.HIGH)
-            horn -= 1                                  # 경적 유지 시간 감소
-        else: 
-            GPIO.output(BUZZER,GPIO.LOW)               # 경적 끄기
+        # 경적 (3회 삐-삐-삐 패턴: 5프레임 ON + 4프레임 OFF × 3회) -------------------------
+        if horn:
+            hornTimer += 1
+            phase = (hornTimer - 1) % 9               # 9프레임 1사이클 (5 ON + 4 OFF)
+            if phase < 5:
+                GPIO.output(BUZZER, GPIO.HIGH)
+            else:
+                GPIO.output(BUZZER, GPIO.LOW)
+            if hornTimer >= 27:                        # 9프레임 × 3회 = 27프레임 완료
+                horn = 0; hornTimer = 0
+                GPIO.output(BUZZER, GPIO.LOW)
+        else:
+            hornTimer = 0
+            GPIO.output(BUZZER, GPIO.LOW)              # 경적 끄기
         # 카메라로 부터 1 프레임 영상 가져오기 ---------------------------------------------------
         _, frame = camera.read() #frame = cv.flip(frame,-1) # 입력 이미지를 필요하면 상하 반전
         viewWin[0:480,80:720] = frame[0:480,0:640]     # 480 x 640 VGA
@@ -355,9 +364,9 @@ def main():
                 cv.line(viewWin, (400+70,160-70), (400-70,160+70), RED, 25)
                 GPIO.output(LAMP_BRAKE,GPIO.HIGH)        # 브레이크 적색 램프 점등
                 if preKey == 80 or preKey == 82:         # 자율 주행(G, Home) 또는 전진(Arrow Up)
-                    horn = True
+                    if not horn: horn = 1                # 아직 울리지 않는 경우에만 3회 시작
                 if distance < STOP_DISTANCE:             # 정지 거리
-                    horn = False                         # 경적 Off
+                    horn = 0; hornTimer = 0              # 경적 Off
                     if (preKey == 80 or preKey == 82):   # 자율 주행(80) 또는 수동 주행(82) 확인
                         signRedDelay = RESTART_NUM       # 주행 정지
                         BLINK_LEFT = True; BLINK_RIGHT = True
@@ -447,7 +456,7 @@ def main():
         elif keyBoard == ord('c') or keyBoard == ord('C'):    # 카메라, 신호등 영역 표시
             VIEW_FLAG = not VIEW_FLAG
         elif keyBoard == ord('h') or keyBoard == ord('H'):    # 경적
-            horn = 5                                          # 5 프레임 동안 경적 울림
+            horn = 1; hornTimer = 0                           # 3회 경적 시작
         elif keyBoard == ord('l') or keyBoard == ord('L'):    # 전조등 매뉴얼 모드
             if lightCar == ' ': lightCar = 'ON'
             elif lightCar == 'ON': lightCar = 'OFF'
