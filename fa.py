@@ -60,10 +60,11 @@ FOLLOW_SLOW_DIST  = 280   # 감속 시작 거리
 FOLLOW_STOP_DIST  = 110   # 완전 정지 거리  (ar.py 의 STOP_DISTANCE 와 동일 권장)
 
 # ─── 장애물 판단 기준 ─────────────────────────────────────────────────────────────────────────
-# 부저(350mm) → 감속(280mm) → 회피 시작(180mm) 순서로 동작
-# 180mm: VL53L0X + 차동구동 1/10 RC카 논문 권장값 (150~200mm)
-AVOID_TRIGGER_DIST = 180  # 회피 조향 시작 거리 (mm) — 이 거리 이하로 N프레임 연속이면 회피 시작
-OBSTACLE_CONFIRM   = 3    # 오탐 방지용 연속 감지 프레임 수
+# 앞 차(서행 추종)와 장애물(급감)을 구분하는 델타 방식 유지
+# 부저(350mm) → 감속(280mm) → 급감 감지 시 회피(180mm 이내에서만) 순서로 동작
+OBSTACLE_DELTA    = 100   # 한 프레임 내 거리 감소(mm)가 이 이상이면 장애물 의심
+OBSTACLE_CONFIRM  = 3     # 장애물 확정을 위한 연속 감지 프레임 수
+AVOID_TRIGGER_DIST = 180  # 급감이 감지될 수 있는 최대 거리 (mm) — 이 거리 이내에서만 회피 판단
 
 # ─── 회피 동작 설정 ──────────────────────────────────────────────────────────────────────────
 # 논문 권장: 조향각 25~35 PWM, 회피 0.5~0.7s, 직진 장애물 이탈까지, 복귀 0.7~1.0s
@@ -101,6 +102,7 @@ _ST_LABEL = {
 _state      = _ST_NORMAL
 _avoidDir   = +1          # +1: 오른쪽 회피,  -1: 왼쪽 회피
 _actLeft    = 0           # 현재 동작(회피/복귀) 잔여 프레임
+_prevDist   = 9999        # 이전 프레임 거리 (델타 계산용)
 _obsCnt     = 0           # 장애물 연속 감지 카운트
 _baseSpeed  = 70          # ar.py 의 RUN_SPEED
 _latestDist = 9999        # measureDistance() 로 저장된 최신 거리 값
@@ -119,10 +121,11 @@ def init(baseSpeed: int = 70, avoidRight: bool = True):
     baseSpeed  : ar.py 의 RUN_SPEED 값 (기본 주행 속도 PWM)
     avoidRight : True → 오른쪽으로 회피,  False → 왼쪽으로 회피
     """
-    global _state, _avoidDir, _actLeft, _obsCnt, _baseSpeed, _latestDist
+    global _state, _avoidDir, _actLeft, _prevDist, _obsCnt, _baseSpeed, _latestDist
     _state      = _ST_NORMAL
     _avoidDir   = +1 if avoidRight else -1
     _actLeft    = 0
+    _prevDist   = 9999
     _obsCnt     = 0
     _baseSpeed  = baseSpeed
     _latestDist = 9999
@@ -159,7 +162,7 @@ def update(distance: int, modelAngle: int, autoRun: bool):
     mR         : 오른쪽 모터 PWM (-100 ~ +100)
     finalAngle : 최종 적용된 조향각 (화면 표시용)
     """
-    global _state, _actLeft, _obsCnt
+    global _state, _actLeft, _prevDist, _obsCnt
 
     # 수동 조작 → 상태 리셋 후 기본값 반환 (fa 모듈은 자율주행 중에만 동작)
     if not autoRun:
@@ -169,15 +172,20 @@ def update(distance: int, modelAngle: int, autoRun: bool):
         return _clamp(mL), _clamp(mR), modelAngle
 
     # ------------------------------------------------------------------
-    # STEP 1 : 장애물 감지 – 거리 임계값 방식
-    #   부저(350mm) → 감속(280mm) → 회피 시작(180mm) 순서
-    #   20mm 이하는 사거리 등 센서 노이즈로 무시
+    # STEP 1 : 장애물 감지 – 델타 방식 (앞 차 추종과 구분)
+    #   앞 차: 서서히 가까워짐 → delta 작음 → 카운트 증가 안 함
+    #   장애물: 갑자기 튀어나옴 → delta 큼 → 카운트 증가 → 회피
+    #   단, AVOID_TRIGGER_DIST(180mm) 이내에서만 판단 (원거리 오탐 방지)
+    #   20mm 이하는 사거리 등 센서 노이즈 무시
     # ------------------------------------------------------------------
+    delta     = _prevDist - distance      # 양수: 가까워짐, 음수: 멀어짐
+    _prevDist = distance
+
     if _state not in (_ST_AVOID, _ST_STRAIGHT, _ST_RETURN):
-        if 20 < distance <= AVOID_TRIGGER_DIST:
-            _obsCnt += 1                  # 회피 거리 이내 → 카운트 증가
+        if distance > 20 and delta >= OBSTACLE_DELTA and distance < AVOID_TRIGGER_DIST:
+            _obsCnt += 1                  # 급감 + 180mm 이내 → 장애물 의심
         else:
-            _obsCnt = max(0, _obsCnt - 1) # 벗어나면 서서히 감소 (오탐 방지)
+            _obsCnt = max(0, _obsCnt - 1) # 조건 미충족 시 서서히 감소 (오탐 방지)
 
         if _obsCnt >= OBSTACLE_CONFIRM:
             _obsCnt  = 0
