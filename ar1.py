@@ -291,7 +291,8 @@ def main():
             hornTimer += 1
             phase = (hornTimer - 1) % 9               # 9프레임 1사이클 (5 ON + 4 OFF)
             if phase < 5:
-                GPIO.output(BUZZER, GPIO.HIGH)
+               # GPIO.output(BUZZER, GPIO.HIGH)     #*****여기서 부저막아둠
+               pass
             else:
                 GPIO.output(BUZZER, GPIO.LOW)
             if hornTimer >= 27:                        # 9프레임 × 3회 = 27프레임 완료
@@ -363,8 +364,8 @@ def main():
                 cv.circle(viewWin, (400,160), 100, RED, 25)  # 정지 표시
                 cv.line(viewWin, (400+70,160-70), (400-70,160+70), RED, 25)
                 GPIO.output(LAMP_BRAKE,GPIO.HIGH)        # 브레이크 적색 램프 점등
-                if preKey == 80 or preKey == 82:         # 자율 주행(G, Home) 또는 전진(Arrow Up)
-                    if not horn: horn = 1                # 아직 울리지 않는 경우에만 3회 시작
+                #if preKey == 80 or preKey == 82:         # 자율 주행(G, Home) 또는 전진(Arrow Up)    임시로
+                    #if not horn: horn = 1                # 아직 울리지 않는 경우에만 3회 시작          부저 막아둠 여기
                 if distance < STOP_DISTANCE:             # 정지 거리
                     horn = 0; hornTimer = 0              # 경적 Off
                     if (preKey == 80 or preKey == 82):   # 자율 주행(80) 또는 수동 주행(82) 확인
@@ -456,7 +457,8 @@ def main():
         elif keyBoard == ord('c') or keyBoard == ord('C'):    # 카메라, 신호등 영역 표시
             VIEW_FLAG = not VIEW_FLAG
         elif keyBoard == ord('h') or keyBoard == ord('H'):    # 경적
-            horn = 1; hornTimer = 0                           # 3회 경적 시작
+            # horn = 1; hornTimer = 0      부저 임시로 꺼둠
+            pass                          # 3회 경적 시작
         elif keyBoard == ord('l') or keyBoard == ord('L'):    # 전조등 매뉴얼 모드
             if lightCar == ' ': lightCar = 'ON'
             elif lightCar == 'ON': lightCar = 'OFF'
