@@ -146,114 +146,91 @@ def measureDistance(distance: int):
 
 
 def update(distance: int, modelAngle: int, autoRun: bool):
-    """
-    매 프레임 호출하여 최종 모터 PWM 값과 조향각을 반환합니다.
-    ar.py 의 자율 주행 mL/mR 계산 부분을 이 함수 반환값으로 교체하세요.
+    global _state, _actLeft, _prevDist, _obsCnt, _stop_tick
 
-    Parameters
-    ----------
-    distance   : ToF 거리 (mm). TOF_FLAG=False 이면 9999 전달
-    modelAngle : 딥러닝 모델이 예측한 조향각 (ar.py 의 angle 변수)
-    autoRun    : 자율 주행 활성 여부 (ar.py 의 autoRun 변수)
-
-    Returns
-    -------
-    mL         : 왼쪽 모터 PWM  (-100 ~ +100)
-    mR         : 오른쪽 모터 PWM (-100 ~ +100)
-    finalAngle : 최종 적용된 조향각 (화면 표시용)
-    """
-    global _state, _actLeft, _prevDist, _obsCnt
-
-    # 수동 조작 → 상태 리셋 후 기본값 반환 (fa 모듈은 자율주행 중에만 동작)
     if not autoRun:
         _reset()
+        _stop_tick = 0
         mL = _baseSpeed + modelAngle
         mR = _baseSpeed - modelAngle
         return _clamp(mL), _clamp(mR), modelAngle
 
     # ------------------------------------------------------------------
-    # STEP 1 : 장애물 감지 – 델타 방식 (앞 차 추종과 구분)
-    #   앞 차: 서서히 가까워짐 → delta 작음 → 카운트 증가 안 함
-    #   장애물: 갑자기 튀어나옴 → delta 큼 → 카운트 증가 → 회피
-    #   단, AVOID_TRIGGER_DIST(180mm) 이내에서만 판단 (원거리 오탐 방지)
-    #   20mm 이하는 사거리 등 센서 노이즈 무시
+    # STEP 1 : 장애물 감지 로직 강화
     # ------------------------------------------------------------------
-    delta     = _prevDist - distance      # 양수: 가까워짐, 음수: 멀어짐
+    delta = _prevDist - distance
     _prevDist = distance
 
-    if _state not in (_ST_AVOID, _ST_STRAIGHT, _ST_RETURN):
-        if distance > 20 and delta >= OBSTACLE_DELTA and distance < AVOID_TRIGGER_DIST:
-            _obsCnt += 1                  # 급감 + 180mm 이내 → 장애물 의심
-        else:
-            _obsCnt = max(0, _obsCnt - 1) # 조건 미충족 시 서서히 감소 (오탐 방지)
+    # 장애물 판단 조건 1: 갑자기 튀어남 (Delta)
+    is_sudden = (20 < distance < 300) and (delta >= OBSTACLE_DELTA)
+    
+    # 장애물 판단 조건 2: 앞에 뭐가 있는데 안 비킴 (Timeout)
+    # 정지 거리 근처에서 10프레임(약 0.7초) 이상 멈춰있으면 장애물로 간주
+    if 20 < distance < FOLLOW_STOP_DIST + 30:
+        _stop_tick += 1
+    else:
+        _stop_tick = 0
 
-        if _obsCnt >= OBSTACLE_CONFIRM:
-            _obsCnt  = 0
-            _state   = _ST_AVOID
+    if _state not in (_ST_AVOID, _ST_STRAIGHT, _ST_RETURN):
+        # 갑자기 나타나거나, 너무 오래 서 있거나!
+        if is_sudden or _stop_tick > 10:
+            _obsCnt += 1
+        else:
+            _obsCnt = max(0, _obsCnt - 1)
+
+        if _obsCnt >= 2: # 확정 카운트를 2로 낮춰서 반응 속도 향상
+            _obsCnt = 0
+            _stop_tick = 0
+            _state = _ST_AVOID
             _actLeft = AVOID_FRAMES
-            print(f'[fa] ★ 장애물 감지! 회피 시작 → {"RIGHT" if _avoidDir > 0 else "LEFT"}  dist={distance}mm')
+            print(f'[fa] !!! 장애물 회피 기동 !!! dist={distance}mm')
 
     # ------------------------------------------------------------------
-    # STEP 2 : 상태 머신 – 조향각 결정
+    # STEP 2 : 상태 머신 (기존과 동일하되 블렌딩 유지)
     # ------------------------------------------------------------------
     if _state == _ST_AVOID:
-        # 1단계: 짧게 회피 방향 조향 (~0.4초)
         steerAngle = AVOID_STEER * _avoidDir
-        _actLeft  -= 1
+        _actLeft -= 1
         if _actLeft <= 0:
-            _state   = _ST_STRAIGHT
+            _state = _ST_STRAIGHT
             _actLeft = STRAIGHT_MAX
-            print(f'[fa] 회피 완료 → 직진 대기 (장애물 시야 벗어날 때까지)')
 
     elif _state == _ST_STRAIGHT:
-        # 2단계: 직진 – 장애물이 시야에서 사라지면(거리 멀어지면) 즉시 복귀 조향
         steerAngle = modelAngle
-        _actLeft  -= 1
-        obstacle_clear = (distance > FOLLOW_SLOW_DIST) or (distance <= 20)
-        if obstacle_clear or _actLeft <= 0:
-            _state   = _ST_RETURN
+        _actLeft -= 1
+        # 장애물이 시야에서 사라지면 즉시 복귀
+        if (distance > FOLLOW_SLOW_DIST) or (distance <= 20) or (_actLeft <= 0):
+            _state = _ST_RETURN
             _actLeft = RETURN_FRAMES
-            print(f'[fa] 장애물 통과 확인 → 차선 복귀 시작  dist={distance}mm')
 
     elif _state == _ST_RETURN:
-        # 3단계: 차선 복귀 (반대 방향 조향)
         steerAngle = -AVOID_STEER * _avoidDir
-        _actLeft  -= 1
-
-        # 복귀 마지막 구간: 모델 조향각과 부드럽게 블렌딩
-        blend_zone = max(1, RETURN_FRAMES // 4)
-        if _actLeft < blend_zone:
-            t = _actLeft / blend_zone          # 1.0 → 0.0
+        _actLeft -= 1
+        # 복귀 끝부분에서 딥러닝 조향과 섞기
+        blend = max(1, RETURN_FRAMES // 4)
+        if _actLeft < blend:
+            t = _actLeft / blend
             steerAngle = int(steerAngle * t + modelAngle * (1.0 - t))
-
         if _actLeft <= 0:
             _state = _ST_NORMAL
-            print(f'[fa] 차선 복귀 완료 → 정상 주행')
-
     else:
-        # 정상 주행 / 감속 / 정지: 딥러닝 모델 조향각 그대로 사용
         steerAngle = modelAngle
 
     # ------------------------------------------------------------------
-    # STEP 3 : 앞 차 거리에 따른 속도 조절
+    # STEP 3 : 속도 결정 (회피 중에는 멈추지 않게 우선순위 조정)
     # ------------------------------------------------------------------
     if _state in (_ST_AVOID, _ST_STRAIGHT, _ST_RETURN):
-        # 회피·직진·복귀 중에는 속도 유지 (너무 느리면 기동 불안정)
         speedRatio = AVOID_SPEED_RATIO
-        # 단, 완전 정지 거리 이하면 무조건 정지 (안전 최우선)
-        if 20 < distance < FOLLOW_STOP_DIST:
+        # 회피 도중 정말 충돌 직전(50mm)이 아니면 멈추지 않고 진행
+        if 20 < distance < 50:
             speedRatio = 0.0
-            _state     = _ST_STOP
     else:
         speedRatio, newState = _distToSpeed(distance)
         _state = newState
 
-    # ------------------------------------------------------------------
-    # STEP 4 : 최종 모터 PWM 계산
-    # ------------------------------------------------------------------
     eff = int(_baseSpeed * speedRatio)
-    mL  = eff + steerAngle
-    mR  = eff - steerAngle
+    mL = eff + steerAngle
+    mR = eff - steerAngle
 
     return _clamp(mL), _clamp(mR), steerAngle
 
