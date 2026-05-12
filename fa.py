@@ -1,6 +1,6 @@
 #############################################################################################
 #
-# Follow & Obstacle Avoidance Module  V1.3                       <fa.py>
+# Follow & Obstacle Avoidance Module  V1.4                       <fa.py>
 #
 # 앞 차량 추종 (Car Following) + 장애물 감지/회피 + 차선 복귀 모듈
 #
@@ -15,6 +15,9 @@
 # ● 변경 사항 V1.2 → V1.3
 #   - 회피/직진/복귀 구간 motorRun 직접 지정 방식으로 변경
 #   - AVOID_ML/MR, STRAIGHT_ML/MR, RETURN_ML/MR 파라미터로 튜닝 가능
+#
+# ● 변경 사항 V1.3 → V1.4
+#   - 회피 완료 후 20프레임 쿨다운 추가 (AVOID 루프 반복 방지)
 #
 # ● ar.py 통합 방법  (★ 표시된 4곳에 코드 삽입)
 #
@@ -113,6 +116,7 @@ _obsCnt     = 0
 _baseSpeed  = 70
 _latestDist = 9999
 _stop_tick  = 0
+_cooldown   = 0
 
 # ===========================================================================================
 # 공개 API
@@ -127,6 +131,7 @@ def init(baseSpeed: int = 70, avoidRight: bool = True):
     _obsCnt     = 0
     _baseSpeed  = baseSpeed
     _latestDist = 9999
+    _cooldown   = 0
     print(f'[fa] 초기화 완료  baseSpeed={baseSpeed}  avoidDir={"RIGHT" if avoidRight else "LEFT"}')
 
 
@@ -136,7 +141,7 @@ def measureDistance(distance: int):
 
 
 def update(distance: int, modelAngle: int, autoRun: bool):
-    global _state, _actLeft, _prevDist, _obsCnt, _stop_tick
+    global _state, _actLeft, _prevDist, _obsCnt, _stop_tick, _cooldown
 
     if not autoRun:
         _reset()
@@ -161,7 +166,9 @@ def update(distance: int, modelAngle: int, autoRun: bool):
         _stop_tick = 0
 
     if _state not in (_ST_AVOID, _ST_STRAIGHT, _ST_RETURN):
-        if is_sudden or _stop_tick > 10:
+        if _cooldown > 0:                      # 쿨다운 중이면 재감지 스킵
+            _cooldown -= 1
+        elif is_sudden or _stop_tick > 10:
             _obsCnt += 1
         else:
             _obsCnt = max(0, _obsCnt - 1)
@@ -169,6 +176,7 @@ def update(distance: int, modelAngle: int, autoRun: bool):
         if _obsCnt >= 2:
             _obsCnt = 0
             _stop_tick = 0
+            _cooldown = 20                     # 회피 후 20프레임(~1.3초) 재감지 금지
             _state = _ST_AVOID
             _actLeft = AVOID_FRAMES
             print(f'[fa] !!! 장애물 회피 기동 !!! dist={distance}mm')
