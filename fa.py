@@ -84,8 +84,8 @@ RETURN_FRAMES     = 10    # 차선 복귀 조향 유지 프레임 수 (~0.7초)
 
 # ─── motorRun 직접 지정 (avoidRight=True 기준, 오른쪽 회피) ─────────────────────────────────
 # ★ 이 값을 테스트하면서 조정하세요
-AVOID_ML    = 0    # 회피 중 왼쪽 모터  (완전 멈춤 → 강한 꺾기)
-AVOID_MR    = 80   # 회피 중 오른쪽 모터
+AVOID_ML    = -40  # 회피 중 왼쪽 모터 (후진 → 제자리 회전 효과)
+AVOID_MR    = 100  # 회피 중 오른쪽 모터 (최대치)
 STRAIGHT_ML = 60   # 직진 왼쪽 모터 (회피 후 차체 틀어짐 보정)
 STRAIGHT_MR = 50   # 직진 오른쪽 모터
 RETURN_ML   = 80   # 복귀 중 왼쪽 모터  (빠르게 → 왼쪽으로 꺾임)
@@ -281,12 +281,13 @@ def _distToSpeed(distance: int):
     if distance >= FOLLOW_SAFE_DIST:
         return 1.0, _ST_NORMAL
     elif distance >= FOLLOW_SLOW_DIST:
-        t = (distance - FOLLOW_SLOW_DIST) / (FOLLOW_SAFE_DIST - FOLLOW_SLOW_DIST)
-        ratio = MIN_SPEED_RATIO + (1.0 - MIN_SPEED_RATIO) * t
-        return ratio, _ST_SLOW
+        # 280~500mm: 60% 유지 (회피 추진력 확보)
+        return 0.6, _ST_SLOW
     elif distance >= FOLLOW_STOP_DIST:
-        return MIN_SPEED_RATIO, _ST_SLOW
+        # 110~280mm: 50% 유지
+        return 0.5, _ST_SLOW
     else:
+        # 110mm 이하: 완전 정지
         return 0.0, _ST_STOP
 
 
