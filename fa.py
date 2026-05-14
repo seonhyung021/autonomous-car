@@ -273,14 +273,14 @@ def _distToSpeed(distance: int):
     if distance >= FOLLOW_SAFE_DIST:
         return 1.0, _ST_NORMAL
     elif distance >= FOLLOW_SLOW_DIST:
+        # 선형 감속하되 최소 50% 보장
         t = (distance - FOLLOW_SLOW_DIST) / (FOLLOW_SAFE_DIST - FOLLOW_SLOW_DIST)
-        ratio = MIN_SPEED_RATIO + (1.0 - MIN_SPEED_RATIO) * t
+        ratio = 0.5 + 0.5 * t   # 50~100% 선형
         return ratio, _ST_SLOW
     elif distance >= FOLLOW_STOP_DIST:
-        return MIN_SPEED_RATIO, _ST_SLOW
+        return 0.5, _ST_SLOW
     else:
         return 0.0, _ST_STOP
-
 
 def _drawGauge(frame, distance: int):
     GREEN   = (  0, 255,   0)
