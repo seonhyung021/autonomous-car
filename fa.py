@@ -1,6 +1,6 @@
 #############################################################################################
 #
-# Follow & Obstacle Avoidance Module  V1.5                       <fa.py>
+# Follow & Obstacle Avoidance Module  V1.6                       <fa.py>
 #
 # 앞 차량 추종 (Car Following) + 장애물 감지/회피 + 차선 복귀 모듈
 #
@@ -22,6 +22,10 @@
 # ● 변경 사항 V1.4 → V1.5
 #   - 프레임 수 실측 기반으로 변경 (AVOID=24, STRAIGHT=30, RETURN=24)
 #   - STRAIGHT 모터값 (60,50)으로 변경 (왼쪽 회피 후 차체 틀어짐 보정)
+#
+# ● 변경 사항 V1.5 → V1.6
+#   - OBSTACLE_DELTA 100 → 70 (더 민감한 장애물 감지)
+#   - _obsCnt >= 2 → >= 1 (즉시 반응)
 #
 # ● ar.py 통합 방법  (★ 표시된 4곳에 코드 삽입)
 #
@@ -69,23 +73,23 @@ FOLLOW_SLOW_DIST  = 280   # 감속 시작 거리
 FOLLOW_STOP_DIST  = 110   # 완전 정지 거리  (ar.py 의 STOP_DISTANCE 와 동일 권장)
 
 # ─── 장애물 판단 기준 ─────────────────────────────────────────────────────────────────────────
-OBSTACLE_DELTA    = 100   # 한 프레임 내 거리 감소(mm)가 이 이상이면 장애물 의심
+OBSTACLE_DELTA    = 70    # 100 → 70 : 더 민감하게 장애물 감지
 OBSTACLE_CONFIRM  = 3     # 장애물 확정을 위한 연속 감지 프레임 수
 AVOID_TRIGGER_DIST = 180  # 급감이 감지될 수 있는 최대 거리 (mm)
 
 # ─── 회피 동작 설정 ──────────────────────────────────────────────────────────────────────────
-AVOID_FRAMES      = 10    # 회피 지속 프레임 수 (~1.6초)
-STRAIGHT_MAX      = 23    # 직진 프레임 수 (~2.0초)
-RETURN_FRAMES     = 10    # 차선 복귀 조향 유지 프레임 수 (~1.6초)
+AVOID_FRAMES      = 10    # 회피 지속 프레임 수 (~0.7초)
+STRAIGHT_MAX      = 30    # 직진 프레임 수 (~2.0초)
+RETURN_FRAMES     = 10    # 차선 복귀 조향 유지 프레임 수 (~0.7초)
 
 # ─── motorRun 직접 지정 (avoidRight=True 기준, 오른쪽 회피) ─────────────────────────────────
 # ★ 이 값을 테스트하면서 조정하세요
-AVOID_ML    = 80   # 회피 중 왼쪽 모터  (느리게 → 오른쪽으로 꺾임)
-AVOID_MR    = 0   # 회피 중 오른쪽 모터
-STRAIGHT_ML = 50   # 직진 왼쪽 모터 (회피 후 차체 틀어짐 보정)
-STRAIGHT_MR = 55   # 직진 오른쪽 모터
-RETURN_ML   = 0   # 복귀 중 왼쪽 모터  (빠르게 → 왼쪽으로 꺾임)
-RETURN_MR   = 80   # 복귀 중 오른쪽 모터
+AVOID_ML    = 0    # 회피 중 왼쪽 모터  (완전 멈춤 → 강한 꺾기)
+AVOID_MR    = 80   # 회피 중 오른쪽 모터
+STRAIGHT_ML = 60   # 직진 왼쪽 모터 (회피 후 차체 틀어짐 보정)
+STRAIGHT_MR = 50   # 직진 오른쪽 모터
+RETURN_ML   = 80   # 복귀 중 왼쪽 모터  (빠르게 → 왼쪽으로 꺾임)
+RETURN_MR   = 30   # 복귀 중 오른쪽 모터
 
 # ─── 속도 설정 (정상 추종 구간) ──────────────────────────────────────────────────────────────
 MIN_SPEED_RATIO   = 0.15  # 서행 시 최솟값 (기본 속도의 15%)
@@ -177,7 +181,7 @@ def update(distance: int, modelAngle: int, autoRun: bool):
         else:
             _obsCnt = max(0, _obsCnt - 1)
 
-        if _obsCnt >= 2:
+        if _obsCnt >= 1:  # 2 → 1 : 즉시 반응
             _obsCnt = 0
             _stop_tick = 0
             _cooldown = 20                     # 회피 후 20프레임(~1.3초) 재감지 금지
