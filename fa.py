@@ -1,90 +1,54 @@
 #############################################################################################
 #
-# Follow & Obstacle Avoidance Module  V1.4                       <fa.py>
+# Follow & Obstacle Avoidance Module  V2.0                       <fa.py>
 #
 # 앞 차량 추종 (Car Following) + 장애물 감지/회피 + 차선 복귀 모듈
 #
-# ● 변경 사항 V1.0 → V1.1
-#   - AVOID_SPEED_RATIO 0.85 → 0.50 (PWM 최대 100 제한 환경에서 조향 여유 확보)
-#   - AVOID_STEER 35 → 45 (더 강한 회피 꺾기)
-#   - AVOID_FRAMES 8 → 14 (회피 지속 시간 ~0.9초)
+# ● V2.0 (소형 RC카 + 소형 장애물 환경 최적화)
+#   - 회피 트리거 거리 확대 (조기 회피로 충돌 방지)
+#   - 회피/직진/복귀 시간 단축 (작은 차에 맞춤)
+#   - 쿨다운 강화 (재트리거 방지)
+#   - 부드러운 진입/종료 블렌딩 유지
 #
-# ● 변경 사항 V1.1 → V1.2
-#   - _ST_STRAIGHT 구간 CNN 조향각 ±15도로 클리핑 (장애물 통과 중 차선 이탈 방지)
+# ● 차량 스펙 가정
+#   - 차폭: 약 15cm (손바닥 크기)
+#   - 장애물: 차보다 작음 (10cm 이하)
+#   - 트랙폭: 좁음 (S자 곡선 많음)
+#   - FPS: 15
 #
-# ● 변경 사항 V1.2 → V1.3
-#   - 회피/직진/복귀 구간 motorRun 직접 지정 방식으로 변경
-#   - AVOID_ML/MR, STRAIGHT_ML/MR, RETURN_ML/MR 파라미터로 튜닝 가능
-#
-# ● 변경 사항 V1.3 → V1.4
-#   - 회피 완료 후 20프레임 쿨다운 추가 (AVOID 루프 반복 방지)
-#
-# ● ar.py 통합 방법  (★ 표시된 4곳에 코드 삽입)
-#
-#   ★ [1] 파일 상단 import 영역 끝에 추가:
-#         import fa
-#
-#   ★ [2] main() 안 변수 초기화 블록에 추가:
-#         fa.init(baseSpeed=RUN_SPEED, avoidRight=True)
-#         distance = 9999          # ToF 거리 초기값
-#
-#   ★ [3] "전방 거리 측정" if TOF_FLAG 블록 안에 추가 (기존 정지 로직 아래):
-#             if distance < STOP_DISTANCE:
-#                 signRedDelay = RESTART_NUM
-#                 BLINK_LEFT = True; BLINK_RIGHT = True
-#             # ★ fa 모듈로 추종 속도 업데이트
-#             fa.measureDistance(distance)
-#
-#   ★ [4] "자율 주행 모드 조향 각도 검출" 블록의 mL/mR 계산 부분 교체:
-#         (수정 전)
-#             mL = RUN_SPEED + angle
-#             mR = RUN_SPEED - angle
-#         (수정 후)
-#             mL, mR, angle = fa.update(distance, angle, autoRun)
-#
-#   ★ [5] (선택) VIEW_FLAG 표시 블록 안에 상태 오버레이 추가:
-#         if VIEW_FLAG:
-#             fa.drawStatus(viewWin, distance, mL, mR)
-#
-# SAMPLE Electronics co.
-# http://www.ArduinoPLUS.cc
-#
-# APR 2026
 #############################################################################################
 
 import cv2 as cv
 import numpy as np
 
 # ===========================================================================================
-# ★ 파라메터 – 필요에 따라 자유롭게 조정하세요
+# ★ 파라메터
 # ===========================================================================================
 
 # ─── 앞 차 추종 거리 (mm) ────────────────────────────────────────────────────────────────────
-FOLLOW_SAFE_DIST  = 500   # 이 거리 이상이면 기본 속도로 정상 주행
-FOLLOW_SLOW_DIST  = 280   # 감속 시작 거리
-FOLLOW_STOP_DIST  = 110   # 완전 정지 거리  (ar.py 의 STOP_DISTANCE 와 동일 권장)
+FOLLOW_SAFE_DIST  = 500
+FOLLOW_SLOW_DIST  = 280
+FOLLOW_STOP_DIST  = 110
 
-# ─── 장애물 판단 기준 ─────────────────────────────────────────────────────────────────────────
-OBSTACLE_DELTA    = 100   # 한 프레임 내 거리 감소(mm)가 이 이상이면 장애물 의심
-OBSTACLE_CONFIRM  = 3     # 장애물 확정을 위한 연속 감지 프레임 수
-AVOID_TRIGGER_DIST = 180  # 급감이 감지될 수 있는 최대 거리 (mm)
+# ─── 장애물 판단 기준 (V2.0: 조기 감지) ──────────────────────────────────────────────────────
+OBSTACLE_DELTA       = 80    # 100 → 80 (작은 장애물도 감지)
+AVOID_TRIGGER_DIST   = 250   # 180 → 250 (더 일찍 회피 판단)
 
-# ─── 회피 동작 설정 ──────────────────────────────────────────────────────────────────────────
-AVOID_FRAMES      = 14    # 회피 지속 프레임 수 (~0.9초)
-STRAIGHT_MAX      = 45    # 직진 최대 프레임 수 (약 3초 타임아웃)
-RETURN_FRAMES     = 12    # 차선 복귀 조향 유지 프레임 수 (약 0.8초)
+# ─── 회피 동작 설정 (V2.0: 소형차 맞춤 - 짧고 빠르게) ─────────────────────────────────────────
+AVOID_FRAMES      = 8     # 14 → 8 (~0.55초, 작은 차는 짧게 꺾어도 충분)
+STRAIGHT_MAX      = 12    # 45 → 12 (~0.8초, 작은 장애물 빠르게 통과)
+RETURN_FRAMES     = 8     # 12 → 8 (~0.55초, 빠르게 복귀)
 
-# ─── motorRun 직접 지정 (avoidRight=True 기준, 오른쪽 회피) ─────────────────────────────────
-# ★ 이 값을 테스트하면서 조정하세요
-AVOID_ML    = 30   # 회피 중 왼쪽 모터  (느리게 → 오른쪽으로 꺾임)
+# ─── motorRun 직접 지정 (avoidRight=True 기준) ──────────────────────────────────────────────
+AVOID_ML    = 30   # 회피 중 왼쪽 모터
 AVOID_MR    = 80   # 회피 중 오른쪽 모터
-STRAIGHT_ML = 55   # 직진 왼쪽 모터
-STRAIGHT_MR = 55   # 직진 오른쪽 모터
-RETURN_ML   = 80   # 복귀 중 왼쪽 모터  (빠르게 → 왼쪽으로 꺾임)
+STRAIGHT_ML = 60   # 직진 왼쪽 (보정: 회피로 차체 틀어짐)
+STRAIGHT_MR = 50   # 직진 오른쪽
+RETURN_ML   = 80   # 복귀 중 왼쪽 모터
 RETURN_MR   = 30   # 복귀 중 오른쪽 모터
 
-# ─── 속도 설정 (정상 추종 구간) ──────────────────────────────────────────────────────────────
-MIN_SPEED_RATIO   = 0.15  # 서행 시 최솟값 (기본 속도의 15%)
+# ─── 속도 설정 ───────────────────────────────────────────────────────────────────────────────
+MIN_SPEED_RATIO   = 0.15
 
 # ===========================================================================================
 # 내부 상태 상수
@@ -123,7 +87,7 @@ _cooldown   = 0
 # ===========================================================================================
 
 def init(baseSpeed: int = 70, avoidRight: bool = True):
-    global _state, _avoidDir, _actLeft, _prevDist, _obsCnt, _baseSpeed, _latestDist
+    global _state, _avoidDir, _actLeft, _prevDist, _obsCnt, _baseSpeed, _latestDist, _stop_tick, _cooldown
     _state      = _ST_NORMAL
     _avoidDir   = +1 if avoidRight else -1
     _actLeft    = 0
@@ -131,8 +95,9 @@ def init(baseSpeed: int = 70, avoidRight: bool = True):
     _obsCnt     = 0
     _baseSpeed  = baseSpeed
     _latestDist = 9999
+    _stop_tick  = 0
     _cooldown   = 0
-    print(f'[fa] 초기화 완료  baseSpeed={baseSpeed}  avoidDir={"RIGHT" if avoidRight else "LEFT"}')
+    print(f'[fa] V2.0 초기화 완료  baseSpeed={baseSpeed}  avoidDir={"RIGHT" if avoidRight else "LEFT"}')
 
 
 def measureDistance(distance: int):
@@ -151,24 +116,24 @@ def update(distance: int, modelAngle: int, autoRun: bool):
         return _clamp(mL), _clamp(mR), modelAngle
 
     # ------------------------------------------------------------------
-    # STEP 1 : 장애물 감지
+    # STEP 1 : 장애물 감지 (V2.0: 조기 감지)
     # ------------------------------------------------------------------
     delta = _prevDist - distance
     _prevDist = distance
 
-    # 조건 1: 급감 감지
-    is_sudden = (20 < distance < 300) and (delta >= OBSTACLE_DELTA)
+    # 조건 1: 급감 감지 (더 넓은 거리 범위에서)
+    is_sudden = (20 < distance < AVOID_TRIGGER_DIST) and (delta >= OBSTACLE_DELTA)
 
-    # 조건 2: 정지 타임아웃 (정적 장애물)
-    if 20 < distance < FOLLOW_STOP_DIST + 30:
+    # 조건 2: 정지 타임아웃 (정적 장애물 - 더 일찍 감지)
+    if 20 < distance < 200:   # 110+30 → 200
         _stop_tick += 1
     else:
         _stop_tick = 0
 
     if _state not in (_ST_AVOID, _ST_STRAIGHT, _ST_RETURN):
-        if _cooldown > 0:                      # 쿨다운 중이면 재감지 스킵
+        if _cooldown > 0:
             _cooldown -= 1
-        elif is_sudden or _stop_tick > 10:
+        elif is_sudden or _stop_tick > 8:    # 10 → 8 (더 빨리 정적 장애물 판단)
             _obsCnt += 1
         else:
             _obsCnt = max(0, _obsCnt - 1)
@@ -176,18 +141,30 @@ def update(distance: int, modelAngle: int, autoRun: bool):
         if _obsCnt >= 2:
             _obsCnt = 0
             _stop_tick = 0
-            _cooldown = 20                     # 회피 후 20프레임(~1.3초) 재감지 금지
+            _cooldown = 30                   # 20 → 30 (재트리거 강화 방지)
             _state = _ST_AVOID
             _actLeft = AVOID_FRAMES
             print(f'[fa] !!! 장애물 회피 기동 !!! dist={distance}mm')
 
     # ------------------------------------------------------------------
-    # STEP 2 : 상태 머신
+    # STEP 2 : 상태 머신 (부드러운 진입/종료 블렌딩)
     # ------------------------------------------------------------------
     if _state == _ST_AVOID:
-        # ★ motorRun 직접 지정: 오른쪽 회피 (avoidRight=True)
-        mL = AVOID_ML if _avoidDir == +1 else AVOID_MR
-        mR = AVOID_MR if _avoidDir == +1 else AVOID_ML
+        target_mL = AVOID_ML if _avoidDir == +1 else AVOID_MR
+        target_mR = AVOID_MR if _avoidDir == +1 else AVOID_ML
+        blend = max(1, AVOID_FRAMES // 4)
+        progress = AVOID_FRAMES - _actLeft
+        if progress < blend:
+            t = progress / blend
+            mL = int(_baseSpeed * (1.0 - t) + target_mL * t)
+            mR = int(_baseSpeed * (1.0 - t) + target_mR * t)
+        elif _actLeft < blend:
+            t = _actLeft / blend
+            mL = int(target_mL * t + STRAIGHT_ML * (1.0 - t))
+            mR = int(target_mR * t + STRAIGHT_MR * (1.0 - t))
+        else:
+            mL = target_mL
+            mR = target_mR
         _actLeft -= 1
         if _actLeft <= 0:
             _state = _ST_STRAIGHT
@@ -195,26 +172,40 @@ def update(distance: int, modelAngle: int, autoRun: bool):
         return _clamp(mL), _clamp(mR), mL - mR
 
     elif _state == _ST_STRAIGHT:
-        # ★ motorRun 직접 지정: 직진
         mL = STRAIGHT_ML
         mR = STRAIGHT_MR
         _actLeft -= 1
-        if (distance > FOLLOW_SLOW_DIST) or (distance <= 20) or (_actLeft <= 0):
+        # 작은 장애물이라 빨리 통과 - 거리 조건도 완화
+        if (distance > FOLLOW_SAFE_DIST) or (distance <= 20) or (_actLeft <= 0):
             _state = _ST_RETURN
             _actLeft = RETURN_FRAMES
         return _clamp(mL), _clamp(mR), 0
 
     elif _state == _ST_RETURN:
-        # ★ motorRun 직접 지정: 반대 방향 복귀
-        mL = RETURN_ML if _avoidDir == +1 else RETURN_MR
-        mR = RETURN_MR if _avoidDir == +1 else RETURN_ML
+        target_mL = RETURN_ML if _avoidDir == +1 else RETURN_MR
+        target_mR = RETURN_MR if _avoidDir == +1 else RETURN_ML
+        blend = max(1, RETURN_FRAMES // 4)
+        progress = RETURN_FRAMES - _actLeft
+        if progress < blend:
+            t = progress / blend
+            mL = int(STRAIGHT_ML * (1.0 - t) + target_mL * t)
+            mR = int(STRAIGHT_MR * (1.0 - t) + target_mR * t)
+        elif _actLeft < blend:
+            t = _actLeft / blend
+            cnn_mL = _baseSpeed + modelAngle
+            cnn_mR = _baseSpeed - modelAngle
+            mL = int(target_mL * t + cnn_mL * (1.0 - t))
+            mR = int(target_mR * t + cnn_mR * (1.0 - t))
+        else:
+            mL = target_mL
+            mR = target_mR
         _actLeft -= 1
         if _actLeft <= 0:
             _state = _ST_NORMAL
         return _clamp(mL), _clamp(mR), mL - mR
 
     else:
-        # 정상 자율주행: CNN 조향각 그대로
+        # 정상 자율주행
         steerAngle = modelAngle
         speedRatio, newState = _distToSpeed(distance)
         _state = newState
@@ -270,10 +261,10 @@ def _clamp(v: int, lo: int = -100, hi: int = 100) -> int:
 
 
 def _distToSpeed(distance: int):
+    """V2.0: 회피 추진력 보장"""
     if distance >= FOLLOW_SAFE_DIST:
         return 1.0, _ST_NORMAL
     elif distance >= FOLLOW_SLOW_DIST:
-        # 선형 감속하되 최소 50% 보장
         t = (distance - FOLLOW_SLOW_DIST) / (FOLLOW_SAFE_DIST - FOLLOW_SLOW_DIST)
         ratio = 0.5 + 0.5 * t   # 50~100% 선형
         return ratio, _ST_SLOW
@@ -281,6 +272,7 @@ def _distToSpeed(distance: int):
         return 0.5, _ST_SLOW
     else:
         return 0.0, _ST_STOP
+
 
 def _drawGauge(frame, distance: int):
     GREEN   = (  0, 255,   0)
