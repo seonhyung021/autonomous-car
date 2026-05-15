@@ -32,20 +32,20 @@ FOLLOW_STOP_DIST  = 110
 
 # ─── 장애물 판단 기준 (V2.0: 조기 감지) ──────────────────────────────────────────────────────
 OBSTACLE_DELTA       = 80    # 100 → 80 (작은 장애물도 감지)
-AVOID_TRIGGER_DIST   = 250   # 180 → 250 (더 일찍 회피 판단)
+AVOID_TRIGGER_DIST   = 350   # 250 → 350 (더 멀리서 미리 회피)
 
 # ─── 회피 동작 설정 (V2.0: 소형차 맞춤 - 짧고 빠르게) ─────────────────────────────────────────
-AVOID_FRAMES      = 8     # 14 → 8 (~0.55초, 작은 차는 짧게 꺾어도 충분)
+AVOID_FRAMES      = 10    # 8 → 10 (~0.7초)
 STRAIGHT_MAX      = 12    # 45 → 12 (~0.8초, 작은 장애물 빠르게 통과)
-RETURN_FRAMES     = 8     # 12 → 8 (~0.55초, 빠르게 복귀)
+RETURN_FRAMES     = 10    # 8 → 10 (~0.7초)
 
 # ─── motorRun 직접 지정 (avoidRight=True 기준) ──────────────────────────────────────────────
-AVOID_ML    = 30   # 회피 중 왼쪽 모터
-AVOID_MR    = 80   # 회피 중 오른쪽 모터
+AVOID_ML    = 10   # 30 → 10 (더 강한 꺾기)
+AVOID_MR    = 95   # 80 → 95 (오른쪽 풀파워)
 STRAIGHT_ML = 60   # 직진 왼쪽 (보정: 회피로 차체 틀어짐)
 STRAIGHT_MR = 50   # 직진 오른쪽
-RETURN_ML   = 80   # 복귀 중 왼쪽 모터
-RETURN_MR   = 30   # 복귀 중 오른쪽 모터
+RETURN_ML   = 95   # 80 → 95 (복귀 풀파워)
+RETURN_MR   = 10   # 30 → 10 (강한 복귀 꺾기)
 
 # ─── 속도 설정 ───────────────────────────────────────────────────────────────────────────────
 MIN_SPEED_RATIO   = 0.15
@@ -125,7 +125,7 @@ def update(distance: int, modelAngle: int, autoRun: bool):
     is_sudden = (20 < distance < AVOID_TRIGGER_DIST) and (delta >= OBSTACLE_DELTA)
 
     # 조건 2: 정지 타임아웃 (정적 장애물 - 더 일찍 감지)
-    if 20 < distance < 200:   # 110+30 → 200
+    if 20 < distance < 280:   # 200 → 280 (더 멀리서 정적 장애물 감지)
         _stop_tick += 1
     else:
         _stop_tick = 0
@@ -217,6 +217,11 @@ def update(distance: int, modelAngle: int, autoRun: bool):
 
 def getStateLabel() -> str:
     return _ST_LABEL.get(_state, '')
+
+
+def isAvoiding() -> bool:
+    """현재 회피/직진/복귀 중인지 반환 (ar.py 정지 로직 건너뛰기용)"""
+    return _state in (_ST_AVOID, _ST_STRAIGHT, _ST_RETURN)
 
 
 def drawStatus(frame, distance: int, mL: int, mR: int):
