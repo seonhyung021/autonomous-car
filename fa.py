@@ -175,8 +175,13 @@ def update(distance: int, modelAngle: int, autoRun: bool):
         mL = STRAIGHT_ML
         mR = STRAIGHT_MR
         _actLeft -= 1
-        # 작은 장애물이라 빨리 통과 - 거리 조건도 완화
-        if (distance > FOLLOW_SAFE_DIST) or (distance <= 20) or (_actLeft <= 0):
+        # 최소 직진 보장
+        elapsed = STRAIGHT_MAX - _actLeft
+        if elapsed > 21:
+            if (distance > FOLLOW_SAFE_DIST) or (distance <= 20) or (_actLeft <= 0):
+                _state = _ST_RETURN
+                _actLeft = RETURN_FRAMES
+        elif _actLeft <= 0:
             _state = _ST_RETURN
             _actLeft = RETURN_FRAMES
         return _clamp(mL), _clamp(mR), 0
