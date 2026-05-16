@@ -36,7 +36,7 @@ AVOID_TRIGGER_DIST   = 350   # 250 → 350 (더 멀리서 미리 회피)
 
 # ─── 회피 동작 설정 (V2.0: 소형차 맞춤 - 짧고 빠르게) ─────────────────────────────────────────
 AVOID_FRAMES      = 27
-STRAIGHT_MAX      = 130   
+STRAIGHT_MAX      = 300   
 RETURN_FRAMES     = 27    
 
 # ─── motorRun 직접 지정 (avoidRight=True 기준) ──────────────────────────────────────────────
