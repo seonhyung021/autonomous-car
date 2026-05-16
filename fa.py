@@ -35,12 +35,12 @@ OBSTACLE_DELTA       = 80    # 100 → 80 (작은 장애물도 감지)
 AVOID_TRIGGER_DIST   = 350   # 250 → 350 (더 멀리서 미리 회피)
 
 # ─── 회피 동작 설정 (V2.0: 소형차 맞춤 - 짧고 빠르게) ─────────────────────────────────────────
-AVOID_FRAMES      = 32
-STRAIGHT_MAX      = 1200 
+AVOID_FRAMES      = 35
+STRAIGHT_MAX      = 1500 
 RETURN_FRAMES     = 30    
 
 # ─── motorRun 직접 지정 (avoidRight=True 기준) ──────────────────────────────────────────────
-AVOID_ML    = 10   # 30 → 10 (더 강한 꺾기)
+AVOID_ML    = 5   # 30 → 10 (더 강한 꺾기)
 AVOID_MR    = 95   # 80 → 95 (오른쪽 풀파워)
 STRAIGHT_ML = 55   # 직진 왼쪽 (보정: 회피로 차체 틀어짐)
 STRAIGHT_MR = 55   # 직진 오른쪽
