@@ -3,7 +3,7 @@ import numpy as np
 
 # ─── 앞 차 추종 거리 (mm) ────────────────────────────────────────────────────────────────────
 FOLLOW_SAFE_DIST  = 500
-FOLLOW_SLOW_DIST  = 380
+FOLLOW_SLOW_DIST  = 280
 FOLLOW_STOP_DIST  = 110
 
 # ─── 장애물 판단 기준  ──────────────────────────────────────────────────────
@@ -13,7 +13,7 @@ AVOID_TRIGGER_DIST   = 350
 # ─── 회피 동작 설정 ─────────────────────────────────────────
 AVOID_FRAMES      = 35
 STRAIGHT_MAX      = 1500 
-RETURN_FRAMES     = 30    
+RETURN_FRAMES     = 34    
 
 # ─── motorRun 직접 지정  ──────────────────────────────────────────────
 AVOID_ML    = 5  
