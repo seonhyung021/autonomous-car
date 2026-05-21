@@ -12,7 +12,7 @@ AVOID_TRIGGER_DIST   = 350
 
 # ─── 회피 동작 설정 ─────────────────────────────────────────
 AVOID_FRAMES      = 35
-STRAIGHT_MAX      = 1500 
+STRAIGHT_MAX      = 1000 
 RETURN_FRAMES     = 37
 
 # ─── motorRun 직접 지정  ──────────────────────────────────────────────
