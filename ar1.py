@@ -366,7 +366,7 @@ def main():
                 GPIO.output(LAMP_BRAKE,GPIO.HIGH)        # 브레이크 적색 램프 점등
                 if preKey == 80 or preKey == 82:         # 자율 주행(G, Home) 또는 전진(Arrow Up)    임시로
                     if not horn: horn = 1                # 아직 울리지 않는 경우에만 3회 시작          부저 막아둠 여기
-                if distance < STOP_DISTANCE and not fa.isAvoiding():             # 정지 거리
+                if distance < STOP_DISTANCE and not fa.isAvoiding():             # V2.0 정지 거리
                     horn = 0; hornTimer = 0              # 경적 Off
                     if (preKey == 80 or preKey == 82):   # 자율 주행(80) 또는 수동 주행(82) 확인
                         signRedDelay = RESTART_NUM       # 주행 정지
