@@ -159,7 +159,7 @@ python gi.py <프로젝트명>
 
 ### 2. 자율주행 실행
 ```bash
-sudo python ar.py <프로젝트명>
+sudo python ar1.py <프로젝트명>
 ```
 
 ### 3. 키보드 조작
