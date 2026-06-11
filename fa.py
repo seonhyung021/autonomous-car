@@ -12,7 +12,7 @@ AVOID_TRIGGER_DIST   = 350
 
 # ─── 회피 동작 설정 ─────────────────────────────────────────
 AVOID_FRAMES      = 35
-STRAIGHT_MAX      = 1000 
+STRAIGHT_MAX      = 700 
 RETURN_FRAMES     = 37
 
 # ─── motorRun 직접 지정  ──────────────────────────────────────────────
@@ -21,7 +21,7 @@ AVOID_MR    = 90
 STRAIGHT_ML = 55  
 STRAIGHT_MR = 55  
 RETURN_ML   = 95  
-RETURN_MR   = 10   
+RETURN_MR   = 5   
 
 # ─── 속도 설정 ───────────────────────────────────────────────────────────────────────────────
 MIN_SPEED_RATIO   = 0.15
@@ -29,7 +29,7 @@ MIN_SPEED_RATIO   = 0.15
 # 내부 상태 상수
 _ST_NORMAL   = 0
 _ST_SLOW     = 1
-_ST_STOP     = 2
+_ST_STOP     = 2 
 _ST_AVOID    = 3
 _ST_STRAIGHT = 5
 _ST_RETURN   = 4
@@ -226,7 +226,7 @@ def _reset():
 
 def _clamp(v: int, lo: int = -100, hi: int = 100) -> int:
     return max(lo, min(hi, int(v)))
-
+ 
 def _distToSpeed(distance: int):
     """V2.0: 회피 추진력 보장"""
     if distance >= FOLLOW_SAFE_DIST:
