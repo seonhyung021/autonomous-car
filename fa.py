@@ -7,7 +7,7 @@ FOLLOW_SLOW_DIST  = 280
 FOLLOW_STOP_DIST  = 110
 
 # ─── 장애물 판단 기준  ──────────────────────────────────────────────────────
-OBSTACLE_DELTA       = 80    
+OBSTACLE_DELTA       = 90    
 AVOID_TRIGGER_DIST   = 350   
 
 # ─── 회피 동작 설정 ─────────────────────────────────────────
