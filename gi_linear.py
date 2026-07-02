@@ -378,11 +378,12 @@ def main():
             if MENU_VIEW: cv.rectangle(viewWin,(80+216,36),(80+423,109),WHITE,2)
         else: nx.lamp(0,0,0)           # 전조등 Off
         #------------------------------------------------------------------------------------
-        roadImg = viewWin[WIN_YU:WIN_YD,80+WIN_XL:80+WIN_XR]  # frame 화면이므로 +80
-        roadImg = cv.resize(roadImg, (200, 66))               # NVIDIA 형식으로 변환
-        if MENU_VIEW: viewWin[40:(40+66), 80+220:(80+220+200)] = roadImg # 학습 RGB 이미지 표시
-        roadImg = cv.cvtColor(roadImg, cv.COLOR_BGR2YUV)      # RGB를 YUV 좌표계로 변환
-        roadImg = cv.GaussianBlur(roadImg, (3,3), 0)          # 가우시안법 노이즈 제거
+        roadImg_C = viewWin[WIN_YU:WIN_YD,80+WIN_XL:80+WIN_XR].copy()  # frame 화면이므로 +80
+        roadImg_D = cv.resize(roadImg_C, (200, 66))               # NVIDIA 형식으로 변환
+        if MENU_VIEW: viewWin[40:(40+66), 80+220:(80+220+200)] = roadImg_D # 학습 RGB 이미지 표시
+        roadImg_E = cv.cvtColor(roadImg_D, cv.COLOR_BGR2YUV)      # RGB를 YUV 좌표계로 변환
+        roadImg_F = cv.GaussianBlur(roadImg_E, (3,3), 0)          # 가우시안법 노이즈 제거
+        roadImg=roadImg_F     
         #------------------------------------------------------------------------------------
         cv.rectangle(viewWin,(80+WIN_XL,WIN_YU),(80+WIN_XR,WIN_YD),CYAN,1) # 딥러닝 영역 박스처리
         viewWin[WIN_YD-WIN_GAP_Y:WIN_YD-WIN_GAP_Y+1,80+WIN_XL:80+WIN_XR:4]=CYAN
@@ -449,18 +450,31 @@ def main():
         #------------------------------------------------------------------------------------
         v = abs(g); w = '+'
         if g < 0: w = '-'                            # 각도 값이 음수일 때 '-' 기호를 붙인다.
-        saveFile = f'{fileNF}{fileId:04d}__{w}{v:02d}.png'  
+        saveFile = f'{fileNF}{fileId:04d}_{stage}{w}{v:02d}.png'  
         if MENU_VIEW:
             cv.putText(viewWin,f'{w}{v}',(80+250, 93),cv.FONT_HERSHEY_COMPLEX_SMALL,3,WHITE)
+        def saveStageImages(fileId, w, v, viewWin, frame, roadImg_C, roadImg_D, roadImg_E, roadImg_F):
+            stages = {
+                'A': viewWin,     # (480, 800)
+                'B': frame,       # (480, 640)
+                'C': roadImg_C,   # 크롭 직후
+                'D': roadImg_D,   # 리사이즈
+                'E': roadImg_E,   # YUV 변환
+                'F': roadImg_F,   # 블러 (최종본)
+            }
+            for stage, img in stages.items():
+                name = f'{fileNF}{fileId:04d}_{stage}{w}{v:02d}.png'
+                cv.imwrite(f'{filePath}{name}', img)
         # 이미지 레코딩 ----------------------------------------------------------------------- 
         if DIRECTORY_FLAG and (recordOn or oneShot): # 연속 레코드 모드 또는 원샷 촬영 모드
             t = cv.getTickCount()
             q = t - timeMemory
             if q > recordTime or oneShot:            # 촬영 간격 시간에 도달 또는 원샷 촬영
                 timeMemory = t; 
+                saveStageImages(fileId, w, v, viewWin, frame, roadImg_C, roadImg_D, roadImg_E, roadImg_F)
                 #----------------------------------------------------------------------------
-                s = f'{filePath}{saveFile}'
-                cv.imwrite(s, roadImg)               # 이미지를 저장
+                # s = f'{filePath}{saveFile}'
+                # cv.imwrite(s, roadImg)               # 이미지를 저장
                 #----------------------------------------------------------------------------
                 shotPeriode = q
                 #print(saveFile, shotPeriode)
